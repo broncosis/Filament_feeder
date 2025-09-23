@@ -37,7 +37,7 @@ but you could deffinatly use a sherpa mini or any of the dirivtitaves I will inc
 there is a fair bit of configuring 
 I will include some of my files as examples 
 
-I have also dicumented this build on the stealth changer discord 
+I have also documented this build on the stealth changer discord 
 https://discordapp.com/channels/1226846451028725821/1401147182639481004
 if you have any questions this is probably the best place to ask
 
