@@ -41,3 +41,20 @@ I have also documented this build on the stealth changer discord
 https://discordapp.com/channels/1226846451028725821/1401147182639481004
 if you have any questions this is probably the best place to ask
 
+My macro's require you to have a purge bucket and brush 
+as well as a working Clean nozzle macro 
+
+after adding the relivant setting for Belay and dynamic macros to your printer cfg 
+you will need to add 
+  LOAD_ANY_TOOL T=0 S=30 D=1360  T being the tool number S is the speed in mm/s and D is the max distance 
+
+[filament_switch_sensor filament_sensor_tool0]
+switch_pin: ^MMB:PC15
+pause_on_runout: FALSE
+runout_gcode:
+  M118 Runout sensor  tool0 reports: Runout
+  SET_GCODE_VARIABLE MACRO=tool0 VARIABLE=filament_consumed VALUE=1
+insert_gcode:
+  M118 Runout sensor tool0 reports: Filament Detected
+  SET_GCODE_VARIABLE MACRO=tool0 VARIABLE=filament_consumed VALUE=0
+  LOAD_ANY_TOOL T=0 S=30 D=1360
