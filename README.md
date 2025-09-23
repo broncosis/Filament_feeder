@@ -1,0 +1,41 @@
+First off this is how I did this might not be the best way 
+probably not the only way and by no means the supported way of doing this 
+use this at your own Risk 
+
+ 
+this project is to feed filament from a btt smart sensor out side the machien to the tool head inside the machine 
+this can be done with or with out filament switch at the tool head I have macros for both here 
+
+I used a couple of Klipper addons to do this succesfully 
+the Annex engineering belay extruder sync sensor 
+https://github.com/Annex-Engineering/Belay
+this one is required 
+and Klipper Dynamicmacros  
+https://dynamicmacros.3dcoded.xyz/
+this is only needed if you want to have it feed to the switch on the top of the tool 
+
+in my setup I am using a sherpa Mini with filament switch and ECAS fitting found here 
+https://www.printables.com/model/999921-sherpa-mini-with-ecas-and-integrated-filament-sens
+but any extruder with a fitting to secure the ptfe tube will work I ahve used 
+cnc mini sherpas and regular mini sherpas with a mount for  a m10 fitting to hold the ptfe 
+
+you are going to need to source about 3-5 input pins and a stepper driver pre tool you want to add this too
+2 inputs for the the btt smart sensor this is optional you could a simple filament switch or a button to trigger the loading 
+1 input for the Belay sensor 
+and 1 optional button for unloading (I used a 6mm tactile button)
+I used a spare older 8 bit board I had with 5 stepper drivers 
+also a option input for a filament sensor on your tool board 
+
+you will need a extruder with a fitting to secure the ptfe for each tool aswell 
+I used BMG/bmgclones and I did test a sherpa mini with a fitting but found the bmg was able to push the filament faster down the ptfe 
+but you could deffinatly use a sherpa mini or any of the dirivtitaves I will inclue my test mount <img width="1520" height="572" alt="feeder_sherpa_render" src="https://github.com/user-attachments/assets/ec337426-976b-4a8f-a5af-d3ac2d130023" />
+
+![bmg_mount_with_switch](https://github.com/user-attachments/assets/ceddc7ac-c21a-4ae3-b110-e4dad918c97b)
+<img width="1520" height="572" alt="render2" src="https://github.com/user-attachments/assets/208eef66-0dfd-441f-aee9-2c5f13220a5b" />
+![bmg mounted](https://github.com/user-attachments/assets/b1e858cc-95d6-4a64-8627-015e9aba537e)
+
+there is a fair bit of configuring 
+I will include some of my files as examples 
+
+
+
