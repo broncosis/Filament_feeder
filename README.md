@@ -6,8 +6,7 @@ use this at your own Risk
 this project is to feed filament from a btt smart sensor out side the machien to the tool head inside the machine 
 this can be done with or with out filament switch at the tool head I have macros for both here 
 
-I used a couple of Klipper addons to do this succesfully 
-the Annex engineering belay extruder sync sensor 
+I used the Annex engineering belay extruder sync sensor 
 https://github.com/Annex-Engineering/Belay
 
 in my setup I am using a sherpa Mini with filament switch and ECAS fitting found here 
