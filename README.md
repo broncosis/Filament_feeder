@@ -9,10 +9,6 @@ this can be done with or with out filament switch at the tool head I have macros
 I used a couple of Klipper addons to do this succesfully 
 the Annex engineering belay extruder sync sensor 
 https://github.com/Annex-Engineering/Belay
-this one is required 
-and Klipper Dynamicmacros  
-https://dynamicmacros.3dcoded.xyz/
-this is only needed if you want to have it feed to the switch on the top of the tool 
 
 in my setup I am using a sherpa Mini with filament switch and ECAS fitting found here 
 https://www.printables.com/model/999921-sherpa-mini-with-ecas-and-integrated-filament-sens
