@@ -8,9 +8,35 @@ Loading can be triggered automatically by a filament runout/insert sensor, or ma
 
 ---
 
+## Installation
+
+Run the installer and pick which sync/buffer module you want:
+
+```bash
+bash install.sh
+```
+
+Two options are available:
+
+### Option 1 — Belay (stable, `main` branch)
+
+Uses [Annex Engineering's Belay](https://github.com/Annex-Engineering/Belay) for single-sensor buffer sync. This is the stable, well-tested path. The installer copies `feeder.cfg`, `exampleT0.cfg`, and `clean_nozzle.cfg` into your Klipper config directory, then walks you through the next steps.
+
+You'll need to install Belay itself separately from the [Annex Engineering repo](https://github.com/Annex-Engineering/Belay).
+
+### Option 2 — TurtleNeck Buffer (experimental — `turtleneck-buffer` branch)
+
+> **⚠️ Still in testing.** This option works on my printer but may have bugs, and the configuration format could change. Try it if you're comfortable debugging Klipper extras.
+
+A custom Klipper extra that replaces Belay with a two-sensor buffer sync and built-in jam detection. The installer drops `turtleneck_buffer.py` into your Klipper extras directory and copies the config files. No separate repo to clone — it's self-contained.
+
+See the [TurtleNeck Buffer section](#turtleneck-buffer) below for full configuration details.
+
+---
+
 ## How It Works
 
-Each tool gets its own dedicated feeder extruder mounted externally. When filament is inserted (or a load command is issued), the feeder pushes filament down the Bowden tube toward the toolhead. A [Belay tensioner](https://github.com/Annex-Engineering/Belay) on each feeder keeps things in sync with the toolhead extruder during printing.
+Each tool gets its own dedicated feeder extruder mounted externally. When filament is inserted (or a load command is issued), the feeder pushes filament down the Bowden tube toward the toolhead. A buffer/sync module on each feeder keeps things in sync with the toolhead extruder during printing.
 
 Loading flow:
 1. Tool is selected and toolhead moves to the purge bucket
@@ -25,7 +51,7 @@ Loading flow:
 Per tool you'll need:
 - **1 feeder extruder** — I used BMG clones; they push faster than Sherpa Minis down long Bowden runs, but Sherpas work too (mount included). Any extruder with a fitting to secure the PTFE will work.
 - **1 stepper driver** — I used a spare 8-bit board with 5 stepper drivers
-- **1 Belay sensor** — for sync feedback during printing ([Annex Engineering Belay](https://github.com/Annex-Engineering/Belay))
+- **1 Belay sensor** (Option 1) *or* **2 switch inputs for TurtleNeck Buffer** (Option 2) — for sync feedback during printing
 - **2 input pins for the BTT Smart Sensor** (optional — a simple filament switch or even a button works fine)
 - **1 optional unload button** — I used a 6mm tactile button per tool, wired to the feeder board
 
@@ -102,8 +128,11 @@ gcode:
 
 | File | Description |
 |------|-------------|
+| `install.sh` | Installer — choose Belay (stable) or TurtleNeck Buffer (experimental) |
 | `feeder.cfg` | Main config — feeder MCU, Belay tensioners, feeder steppers, unload buttons, and all macros |
-| `T0.cfg` | Sample tool config — EBB CAN toolhead board, extruder, hotend fan, part fan, ADXL345, toolchanger tool definition, and all three filament sensors |
+| `exampleT0.cfg` | Sample tool config — EBB CAN toolhead board, extruder, hotend fan, part fan, ADXL345, toolchanger tool definition, and all three filament sensors |
+| `clean_nozzle.cfg` | Nozzle wipe macro |
+| `turtleneck_buffer/` | TurtleNeck Buffer Klipper extra, install script, and example configs *(experimental)* |
 | `bmg_sfs2mount.stl` | BMG feeder mount with SFS2 sensor bracket |
 | `bmg_sfs2mount_with button.stl` | Same but with tactile unload button |
 | `sherpamount.stl` | Sherpa Mini feeder mount (test variant) |
@@ -114,7 +143,7 @@ gcode:
 
 ## Configuration
 
-Copy `feeder.cfg` into your Klipper config directory and add `[include feeder.cfg]` to your `printer.cfg`.
+Run `bash install.sh` to copy config files, or copy them manually. Add `[include feeder.cfg]` to your `printer.cfg`.
 
 You'll need to update:
 - **MCU serial path** — match your feeder board's USB ID
@@ -130,7 +159,7 @@ Add the relevant Belay settings to your `printer.cfg` as documented in the [Bela
 
 ### Toolhead filament sensors
 
-Each tool uses up to three sensors, all defined in the tool's config file (e.g. `T0.cfg`). See the included `T0.cfg` for a complete working example.
+Each tool uses up to three sensors, all defined in the tool's config file (e.g. `T0.cfg`). See the included `exampleT0.cfg` for a complete working example.
 
 **1. Feeder-side switch sensor** (`filament_sensor_T{N}`) — mounted at the feeder extruder on the feeder MCU. Detects insert/runout at the feeder end and triggers `LOAD_ANY_TOOL` on insert:
 
@@ -209,6 +238,71 @@ UNLOAD_ANY_TOOL T=0 S=30 D=1400
 ```
 
 Unload buttons on the feeder box also call this automatically.
+
+---
+
+## TurtleNeck Buffer
+
+> **⚠️ Experimental — still in testing.** Works on my printer but may have bugs. Configuration format may change.
+
+TurtleNeck Buffer is a custom Klipper extra (`turtleneck_buffer.py`) that replaces Belay with a two-sensor design and adds built-in jam detection. Install it via `install.sh` option 2.
+
+### How it differs from Belay
+
+| | Belay | TurtleNeck Buffer |
+|---|---|---|
+| Sensors per tool | 1 | 2 (advance + trailing) |
+| Sync logic | single threshold | three-state: neutral / advancing / trailing |
+| Jam detection | no (uses BTT SFS separately) | built-in |
+| Installation | separate repo | single `.py` file, included here |
+
+### Configuration
+
+Add a `[turtleneck_buffer TN]` section for each tool:
+
+```ini
+[turtleneck_buffer T0]
+advance_pin: feeder:PA0        # buffer expanded — speed up
+trailing_pin: feeder:PA1       # buffer compressed — slow down
+extruder_stepper: feeder_t0
+multiplier_high: 1.05          # speed multiplier when advancing
+multiplier_low: 0.95           # speed multiplier when trailing
+sensitivity: 5                 # jam detection threshold (0–10, higher = more sensitive)
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `advance_pin` | Switch that triggers when the buffer is fully expanded (filament tension low) |
+| `trailing_pin` | Switch that triggers when the buffer is compressed (filament tension high) |
+| `extruder_stepper` | Name of the `[extruder_stepper]` to control |
+| `multiplier_high` | Speed multiplier applied when advancing (buffer expanded) |
+| `multiplier_low` | Speed multiplier applied when trailing (buffer compressed) |
+| `sensitivity` | Jam detection sensitivity 0–10. `0` = disabled, `10` = triggers after ~10 mm without buffer movement |
+
+### Available commands
+
+| Command | Description |
+|---------|-------------|
+| `QUERY_BUFFER BUFFER=T0` | Report current state and rotation_distance |
+| `SET_ROTATION_FACTOR BUFFER=T0 FACTOR=1.02` | Directly adjust speed |
+| `SET_BUFFER_MULTIPLIER BUFFER=T0 MULTIPLIER=HIGH FACTOR=1.05` | Tune high/low multipliers live |
+
+### Jam detection
+
+When the extruder moves more than `fault_distance` mm without the buffer state changing, the module calls the `TURTLENECK_JAM` macro. You can override this macro to trigger a pause, alert, or custom recovery:
+
+```ini
+[gcode_macro TURTLENECK_JAM]
+gcode:
+    PAUSE
+    M117 Filament jam detected on {params.TOOL}
+```
+
+If `TURTLENECK_JAM` is not defined, the module logs a warning and continues.
+
+### feeder.cfg with TurtleNeck Buffer
+
+The same `feeder.cfg` is used, but you should **remove or comment out the `[belay]` sections** — TurtleNeck Buffer takes over that role. Everything else (steppers, macros, sensors) stays the same.
 
 ---
 
