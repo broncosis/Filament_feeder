@@ -45,7 +45,56 @@ For the Sherpa Mini variant with ECAS fitting and integrated filament sensor, se
 Your printer needs to have working:
 - Homing and Quad Gantry Level (QGL) — the macros check for these before doing anything
 - A **purge bucket and brush** — loading and unloading both move to the bucket
-- A **`CLEAN_NOZZLE` macro** — called after purging
+- A **`CLEAN_NOZZLE` macro** — called after purging to wipe the nozzle
+
+A sample `CLEAN_NOZZLE` macro is included in `clean_nozzle.cfg`. The key variables to tune for your setup are:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `start_x` | X position of the left edge of the brush | `30` |
+| `start_y` | Y position of the brush | `-1` |
+| `start_z` | Z height to wipe at | `0.7` |
+| `wipe_dist` | Length of the brush in mm | `32` |
+| `wipe_times` | Number of wipe passes | `8` |
+| `wipe_speed` | Wipe speed in mm/s | `200` |
+| `min_temp` | Minimum temp before wiping (heats to this if lower) | `150` |
+
+The macro uses whatever temperature the nozzle was already targeting — it only heats to `min_temp` if the nozzle is cold, then restores the original target when done.
+
+```ini
+[gcode_macro CLEAN_NOZZLE]
+variable_start_x: 30          # X position of the left edge of the brush
+variable_start_y: -1          # Y position of the brush
+variable_start_z: 0.7         # Z height to wipe at
+variable_wipe_dist: 32        # Length of the brush in mm
+variable_wipe_times: 8        # Number of wipe passes
+variable_wipe_speed: 200      # Wipe speed in mm/s
+variable_raise_distance: 25   # Z raise after wiping
+variable_min_temp: 150        # Minimum temp to wipe at (heats up if below this)
+gcode:
+    {% if "xyz" not in printer.toolhead.homed_axes %}
+        G28
+    {% endif %}
+    RESPOND TYPE=echo MSG="Cleaning nozzle"
+    {% set heater = printer.toolhead.extruder %}
+    {% set target_temp = printer[heater].target %}
+    {% if target_temp < min_temp %}
+        M104 S{min_temp}
+    {% endif %}
+    G90
+    G1 X{start_x + (wipe_dist/2)} Y{start_y} F12000
+    TEMPERATURE_WAIT SENSOR={heater} MINIMUM={min_temp}
+    G1 Z{start_z} F1500
+    G1 X{start_x} F{wipe_speed * 60}
+    {% for wipes in range(1, (wipe_times + 1)) %}
+        G1 X{start_x + wipe_dist} F{wipe_speed * 60}
+        G1 X{start_x} F{wipe_speed * 60}
+    {% endfor %}
+    G1 Y0 X60
+    G1 Y4 X60
+    G1 Z{raise_distance}
+    M104 S{target_temp}
+```
 
 ---
 
