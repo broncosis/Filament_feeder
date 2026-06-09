@@ -1,10 +1,12 @@
 #!/bin/bash
 # Filament Feeder Installer
 # Choose between Belay (stable) or TurtleNeck Buffer (experimental)
+# Can be run from a cloned copy of the repo, or piped directly via curl.
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_URL="https://raw.githubusercontent.com/broncosis/Filament_feeder"
 
 # ---- Colors ------------------------------------------------------------------
 
@@ -14,6 +16,15 @@ GREEN='\033[0;32m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
+
+# ---- Detect if running from a cloned repo ------------------------------------
+# When piped via curl, SCRIPT_DIR won't have the repo files, so we download
+# everything instead of copying from local paths.
+
+IN_REPO=false
+if [ -f "$SCRIPT_DIR/feeder.cfg" ] && git -C "$SCRIPT_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+    IN_REPO=true
+fi
 
 # ---- Auto-detect Klipper installation ----------------------------------------
 
@@ -102,39 +113,59 @@ if [ -z "$CONFIG_DIR" ]; then
     fi
 fi
 
-# ---- Helpers -----------------------------------------------------------------
+# ---- File helpers ------------------------------------------------------------
 
-# Copy a file to a directory, prompting before overwrite
-copy_cfg() {
-    local src="$1"
+# Fetch a file from the main branch — local copy if available, else download.
+# Writes to $dest (a temp path the caller provides).
+get_main_file() {
+    local rel_path="$1"
+    local dest="$2"
+    if $IN_REPO && [ -f "$SCRIPT_DIR/$rel_path" ]; then
+        cp "$SCRIPT_DIR/$rel_path" "$dest"
+    else
+        curl -fsSL "$REPO_URL/main/$rel_path" -o "$dest"
+    fi
+}
+
+# Fetch a file from the turtleneck-buffer branch — tries git first when in
+# repo, falls back to curl.
+get_turtleneck_file() {
+    local rel_path="$1"
+    local dest="$2"
+    if $IN_REPO; then
+        if git -C "$SCRIPT_DIR" show "turtleneck-buffer:$rel_path" > "$dest" 2>/dev/null; then
+            return 0
+        elif git -C "$SCRIPT_DIR" show "origin/turtleneck-buffer:$rel_path" > "$dest" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    curl -fsSL "$REPO_URL/turtleneck-buffer/$rel_path" -o "$dest"
+}
+
+# Download a file (via get_fn) and copy it into dst_dir, prompting on overwrite.
+# Usage: install_file <rel_path> <dst_dir> <get_fn>
+install_file() {
+    local rel_path="$1"
     local dst_dir="$2"
+    local get_fn="$3"
     local name
-    name="$(basename "$src")"
+    name="$(basename "$rel_path")"
+    local tmp
+    tmp="$(mktemp /tmp/ff_XXXXXX)"
+
+    "$get_fn" "$rel_path" "$tmp"
 
     if [ -f "$dst_dir/$name" ]; then
         read -rp "  '$name' already exists — overwrite? [y/N] " yn
         if [[ ! "$yn" =~ ^[Yy]$ ]]; then
             echo "  Skipped: $name"
+            rm -f "$tmp"
             return
         fi
     fi
-    cp "$src" "$dst_dir/$name"
+    cp "$tmp" "$dst_dir/$name"
     echo -e "  ${GREEN}Installed:${NC} $dst_dir/$name"
-}
-
-# Extract a file from the turtleneck-buffer branch without switching branches.
-# Tries local branch first, then origin/turtleneck-buffer.
-get_from_turtleneck_branch() {
-    local branch_path="$1"
-    local dest="$2"
-
-    if git -C "$SCRIPT_DIR" show "turtleneck-buffer:$branch_path" > "$dest" 2>/dev/null; then
-        return 0
-    elif git -C "$SCRIPT_DIR" show "origin/turtleneck-buffer:$branch_path" > "$dest" 2>/dev/null; then
-        return 0
-    else
-        return 1
-    fi
+    rm -f "$tmp"
 }
 
 # ---- Belay install -----------------------------------------------------------
@@ -142,24 +173,73 @@ get_from_turtleneck_branch() {
 install_belay() {
     echo ""
     echo -e "${CYAN}Installing Belay-based feeder setup...${NC}"
+
+    # -- Install Belay Klipper extra --
+
+    if [ -z "$KLIPPER_DIR" ]; then
+        echo ""
+        read -rp "Enter your Klipper directory path: " KLIPPER_DIR
+        KLIPPER_DIR="${KLIPPER_DIR%/}"
+        if [ ! -d "$KLIPPER_DIR/klippy/extras" ]; then
+            echo -e "${RED}ERROR: klippy/extras not found under $KLIPPER_DIR${NC}"
+            exit 1
+        fi
+    fi
+
+    echo ""
+    echo "Installing Belay from Annex Engineering:"
+    BELAY_TMP="$(mktemp -d /tmp/belay_XXXXXX)"
+    git clone --quiet --depth 1 https://github.com/Annex-Engineering/Belay "$BELAY_TMP"
+
+    if [ -f "$BELAY_TMP/install.sh" ]; then
+        echo "  Running Belay install script..."
+        # Pass KLIPPER_DIR so Belay's installer finds the right location
+        KLIPPER_DIR="$KLIPPER_DIR" bash "$BELAY_TMP/install.sh"
+    else
+        # Fallback: find and copy the Klipper extra .py file
+        BELAY_PY="$(find "$BELAY_TMP" -maxdepth 2 -name "belay.py" | head -1)"
+        if [ -n "$BELAY_PY" ]; then
+            cp "$BELAY_PY" "$KLIPPER_DIR/klippy/extras/belay.py"
+            echo -e "  ${GREEN}Installed:${NC} $KLIPPER_DIR/klippy/extras/belay.py"
+        else
+            echo -e "  ${YELLOW}Warning: could not find belay.py in the Belay repo.${NC}"
+            echo "  Install manually from: https://github.com/Annex-Engineering/Belay"
+        fi
+    fi
+    rm -rf "$BELAY_TMP"
+
+    # -- Copy config files --
+
     echo ""
     echo "Copying config files to $CONFIG_DIR :"
-    copy_cfg "$SCRIPT_DIR/feeder.cfg"       "$CONFIG_DIR"
-    copy_cfg "$SCRIPT_DIR/exampleT0.cfg"    "$CONFIG_DIR"
-    copy_cfg "$SCRIPT_DIR/clean_nozzle.cfg" "$CONFIG_DIR"
+    install_file "feeder.cfg"       "$CONFIG_DIR" get_main_file
+    install_file "exampleT0.cfg"    "$CONFIG_DIR" get_main_file
+    install_file "clean_nozzle.cfg" "$CONFIG_DIR" get_main_file
+
+    # -- Offer Klipper restart --
+
+    echo ""
+    if systemctl is-active --quiet klipper 2>/dev/null; then
+        read -rp "Restart Klipper now? [y/N] " answer
+        if [[ "$answer" =~ ^[Yy]$ ]]; then
+            sudo systemctl restart klipper
+            echo -e "${GREEN}Klipper restarted.${NC}"
+        else
+            echo "Skipped — remember to restart Klipper before Belay takes effect."
+        fi
+    else
+        echo "Klipper service not detected — restart it manually when ready."
+    fi
 
     echo ""
     echo -e "${GREEN}${BOLD}Done!${NC} Next steps:"
     echo ""
-    echo "  1. Install Belay from Annex Engineering:"
-    echo "       https://github.com/Annex-Engineering/Belay"
-    echo ""
-    echo "  2. Add to your printer.cfg:"
+    echo "  1. Add to your printer.cfg:"
     echo "       [include feeder.cfg]"
     echo "       [include clean_nozzle.cfg]"
     echo "       # Copy exampleT0.cfg for each tool, rename, and [include] each one"
     echo ""
-    echo "  3. Update feeder.cfg:"
+    echo "  2. Update feeder.cfg:"
     echo "       - MCU serial path (match your feeder board's USB ID)"
     echo "       - Sensor and button pins"
     echo "       - extruder_stepper extruder names (extruder, extruder1, ...)"
@@ -167,7 +247,7 @@ install_belay() {
     echo "       - bucket_x / bucket_y (your purge bucket position)"
     echo "       - Bowden tube length (D parameter, default 1400)"
     echo ""
-    echo "  4. Restart Klipper"
+    echo "  3. Restart Klipper"
 }
 
 # ---- TurtleNeck Buffer install -----------------------------------------------
@@ -196,23 +276,11 @@ install_turtleneck() {
     fi
 
     EXTRAS_DIR="$KLIPPER_DIR/klippy/extras"
-    TMP_PY="$(mktemp /tmp/turtleneck_buffer_XXXXXX.py)"
+    TMP_PY="$(mktemp /tmp/ff_XXXXXX.py)"
 
     echo ""
     echo "Installing turtleneck_buffer.py into Klipper extras:"
-
-    # Prefer the local file (if already on turtleneck-buffer branch), then git
-    if [ -f "$SCRIPT_DIR/turtleneck_buffer/turtleneck_buffer.py" ]; then
-        cp "$SCRIPT_DIR/turtleneck_buffer/turtleneck_buffer.py" "$TMP_PY"
-    elif get_from_turtleneck_branch "turtleneck_buffer/turtleneck_buffer.py" "$TMP_PY"; then
-        echo "  (fetched from turtleneck-buffer git branch)"
-    else
-        echo -e "${RED}ERROR: Could not locate turtleneck_buffer.py${NC}"
-        echo "  Ensure the turtleneck-buffer branch has been fetched:"
-        echo "    git fetch origin turtleneck-buffer"
-        rm -f "$TMP_PY"
-        exit 1
-    fi
+    get_turtleneck_file "turtleneck_buffer/turtleneck_buffer.py" "$TMP_PY"
 
     if [ -f "$EXTRAS_DIR/turtleneck_buffer.py" ]; then
         read -rp "  turtleneck_buffer.py already exists — overwrite? [y/N] " yn
@@ -232,8 +300,8 @@ install_turtleneck() {
 
     echo ""
     echo "Copying config files to $CONFIG_DIR :"
-    copy_cfg "$SCRIPT_DIR/feeder.cfg"       "$CONFIG_DIR"
-    copy_cfg "$SCRIPT_DIR/clean_nozzle.cfg" "$CONFIG_DIR"
+    install_file "feeder.cfg"       "$CONFIG_DIR" get_main_file
+    install_file "clean_nozzle.cfg" "$CONFIG_DIR" get_main_file
 
     # -- Offer example config --
 
@@ -244,37 +312,9 @@ install_turtleneck() {
     echo "  s) Skip"
     read -rp "Copy an example config? [a/b/s]: " example_choice
 
-    copy_example_cfg() {
-        local filename="$1"
-        local tmp
-        tmp="$(mktemp /tmp/tb_example_XXXXXX.cfg)"
-
-        if [ -f "$SCRIPT_DIR/turtleneck_buffer/$filename" ]; then
-            cp "$SCRIPT_DIR/turtleneck_buffer/$filename" "$tmp"
-        elif get_from_turtleneck_branch "turtleneck_buffer/$filename" "$tmp"; then
-            : # got it
-        else
-            echo -e "  ${RED}Could not locate $filename${NC}"
-            rm -f "$tmp"
-            return
-        fi
-
-        if [ -f "$CONFIG_DIR/$filename" ]; then
-            read -rp "  '$filename' already exists — overwrite? [y/N] " yn
-            if [[ ! "$yn" =~ ^[Yy]$ ]]; then
-                echo "  Skipped: $filename"
-                rm -f "$tmp"
-                return
-            fi
-        fi
-        cp "$tmp" "$CONFIG_DIR/$filename"
-        echo -e "  ${GREEN}Installed:${NC} $CONFIG_DIR/$filename"
-        rm -f "$tmp"
-    }
-
     case "$example_choice" in
-        a|A) copy_example_cfg "turtleneck_buffer_example.cfg" ;;
-        b|B) copy_example_cfg "turtleneck_buffer_ricky.cfg" ;;
+        a|A) install_file "turtleneck_buffer/turtleneck_buffer_example.cfg" "$CONFIG_DIR" get_turtleneck_file ;;
+        b|B) install_file "turtleneck_buffer/turtleneck_buffer_ricky.cfg"   "$CONFIG_DIR" get_turtleneck_file ;;
         *)   echo "  Skipped." ;;
     esac
 

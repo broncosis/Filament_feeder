@@ -10,21 +10,21 @@ Loading can be triggered automatically by a filament runout/insert sensor, or ma
 
 ## Installation
 
-Run the installer and pick which sync/buffer module you want:
+Run this one-liner on your printer's SSH session — no cloning required:
 
 ```bash
-bash install.sh
+bash <(curl -fsSL https://raw.githubusercontent.com/broncosis/Filament_feeder/main/install.sh)
 ```
+
+The installer will detect your Klipper and config directories, then ask which sync module you want.
 
 Two options are available:
 
-### Option 1 — Belay (stable, `main` branch)
+### Option 1 — Belay (stable)
 
-Uses [Annex Engineering's Belay](https://github.com/Annex-Engineering/Belay) for single-sensor buffer sync. This is the stable, well-tested path. The installer copies `feeder.cfg`, `exampleT0.cfg`, and `clean_nozzle.cfg` into your Klipper config directory, then walks you through the next steps.
+Uses [Annex Engineering's Belay](https://github.com/Annex-Engineering/Belay) for single-sensor buffer sync. This is the stable, well-tested path. The installer clones and runs the Belay installer automatically, then copies `feeder.cfg`, `exampleT0.cfg`, and `clean_nozzle.cfg` into your Klipper config directory.
 
-You'll need to install Belay itself separately from the [Annex Engineering repo](https://github.com/Annex-Engineering/Belay).
-
-### Option 2 — TurtleNeck Buffer (experimental — `turtleneck-buffer` branch)
+### Option 2 — TurtleNeck Buffer (experimental)
 
 > **⚠️ Still in testing.** This option works on my printer but may have bugs, and the configuration format could change. Try it if you're comfortable debugging Klipper extras.
 
