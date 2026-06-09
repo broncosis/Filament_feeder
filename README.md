@@ -306,6 +306,14 @@ The same `feeder.cfg` is used, but you should **remove or comment out the `[bela
 
 ---
 
+## Credits
+
+**[Annex Engineering](https://github.com/Annex-Engineering)** — for [Belay](https://github.com/Annex-Engineering/Belay), the single-sensor buffer sync module that this project is built around. Great hardware and great software — go check out their stuff.
+
+**[Armoured Turtle](https://github.com/ArmouredTurtle)** — for the TurtleNeck buffer concept and hardware that the `turtleneck_buffer` Klipper extra is designed to work with. The two-sensor approach and the AFC config parameter naming both come from their work.
+
+---
+
 ## Questions / Discussion
 
 I've documented this build on the Stealth Changer Discord: https://discordapp.com/channels/1226846451028725821/1401147182639481004
