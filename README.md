@@ -306,6 +306,32 @@ The same `feeder.cfg` is used, but you should **remove or comment out the `[bela
 
 ---
 
+## Companion Projects
+
+These are separate projects built to improve the experience around this feeder system. Neither is required — the feeder works without them — but together they make toolchanger filament management significantly more polished.
+
+### KlipperScreen Filament Lanes
+
+[broncosis/KlipperScreen-filament-lanes](https://github.com/broncosis/KlipperScreen-filament-lanes)
+
+A custom KlipperScreen panel that gives you a live view of all your filament lanes on the printer touchscreen. Each tool gets a column showing spool color, material, and name pulled from Spoolman, with per-lane filament sensor status and tap-to-select tool switching. Works on 4, 5, 6+ tool setups automatically.
+
+**Requires:** KlipperScreen, Moonraker with Spoolman integration, and the `LOAD_ANY_TOOL_DIST` / `UNLOAD_ANY_TOOL` macros from this repo. Works without spoolman-lane-sync, but shows richer data with it.
+
+Install via the one-liner in that repo — it symlinks the panel into KlipperScreen and adds the config block.
+
+### Spoolman Lane Sync
+
+[broncosis/spoolman-lane-sync](https://github.com/broncosis/spoolman-lane-sync)
+
+A small background service that syncs filament data from Spoolman into Moonraker's database so OrcaSlicer sees which material is loaded in each tool slot. Polls Spoolman every 30 seconds and listens on Moonraker's WebSocket for real-time updates. Backs off automatically if Happy Hare or AFC is already managing that data.
+
+**Requires:** Python 3.10+, Moonraker, Spoolman. Runs as a systemd service and integrates with Moonraker's update manager for OTA updates.
+
+Install by cloning the repo, running `install.sh`, and configuring the `.env` file with your Moonraker/Spoolman addresses.
+
+---
+
 ## Credits
 
 **[Annex Engineering](https://github.com/Annex-Engineering)** — for [Belay](https://github.com/Annex-Engineering/Belay), the single-sensor buffer sync module that this project is built around. Great hardware and great software — go check out their stuff.
