@@ -338,6 +338,8 @@ Install by cloning the repo, running `install.sh`, and configuring the `.env` fi
 
 **[Armoured Turtle](https://github.com/ArmouredTurtle)** — for the TurtleNeck buffer concept and hardware that the `turtleneck_buffer` Klipper extra is designed to work with. The two-sensor approach and the AFC config parameter naming both come from their work.
 
+**[CapTightpants / SIFM](https://github.com/CapTightpants/SIFM)** — the tip-forming wiggle in `UNLOAD_ANY_TOOL` is based on the `_SIFM_LOAD_FINISH` sequence from SIFM (Spoolman Interactive Filament Manager). Used with permission from the author.
+
 ---
 
 ## Questions / Discussion
