@@ -49,10 +49,16 @@ No installer, no other files required.
 
 Section name: `[turtleneck_buffer <name>]`
 
-Named instances allow arbitrary tool count:
+Each instance picks its sensor topology via `sensor_mode` (optional, default
+`dual`). This lets one printer.cfg mix TurtleNeck two-sensor tools and
+Belay-compatible single-sensor tools under the same module, on the same
+branch.
+
+### `sensor_mode: dual` (default) — TurtleNeck two-sensor buffer
 
 ```ini
 [turtleneck_buffer T0]
+sensor_mode: dual               # optional — this is the default
 advance_pin: ^PA1               # required — AFC name match
 trailing_pin: ^PA2              # required — AFC name match
 extruder_stepper: _tool0_feeder # required — not in AFC (AFC manages this itself)
@@ -61,6 +67,26 @@ multiplier_low: 0.95            # optional, default 0.95 — AFC name + default 
 filament_error_sensitivity: 5   # optional, default 0 (disabled) — AFC name match
                                 # 0 = disabled, 1 = least sensitive, 10 = most sensitive
                                 # formula: fault_distance = (11 - sensitivity) * 10 mm
+```
+
+### `sensor_mode: single` — Belay-compatible single-sensor buffer
+
+Sensor-compatible with the Annex-Engineering Belay hardware design (see
+CREDITS.md) — one switch, no neutral dead zone, **no jam detection**
+(a single switch can't tell "stuck expanded" from "stuck compressed", and
+Belay itself doesn't attempt jam detection either). `filament_error_sensitivity`
+is not a valid option in this mode — Klipper's config validation will error at
+startup if it's left in a single-mode section by mistake.
+
+```ini
+[turtleneck_buffer T5]
+sensor_mode: single             # required — selects the single-sensor class
+sensor_pin: ^PC3                # required
+invert_sensor: False            # optional, default False — flip active-state
+                                 # if wiring/logic reads backwards
+extruder_stepper: _tool5_feeder # required
+multiplier_high: 1.05           # optional, default 1.05 — matches Belay's default
+multiplier_low: 0.95            # optional, default 0.95 — matches Belay's default
 ```
 
 ---
@@ -125,6 +151,25 @@ Mirror AFC buffer commands exactly:
 | `QUERY_BUFFER` | `BUFFER=<name>` | Reports current state and rotation_distance of named instance |
 | `SET_ROTATION_FACTOR` | `BUFFER=<name> FACTOR=<float>` | Directly applies a rotation factor to the extruder_stepper |
 | `SET_BUFFER_MULTIPLIER` | `BUFFER=<name> MULTIPLIER=<HIGH\|LOW> FACTOR=<float>` | Live-adjusts multiplier_high or multiplier_low |
+
+---
+
+## Belay Migration Notes
+
+For a tool currently running the actual Belay module, switching to
+`turtleneck_buffer.py` with `sensor_mode: single` means:
+
+- Same physical sensor, same wiring — just point `sensor_pin` at whatever
+  pin the Belay config used for its switch.
+- `multiplier_high`/`multiplier_low` carry across unchanged (same names,
+  same defaults).
+- Jam detection is not gained or lost — Belay never had it.
+- Remove the `[belay]` (or equivalent) section and the Belay module install;
+  add `[turtleneck_buffer <name>]` with `sensor_mode: single` instead.
+
+This lets every tool across every printer install from the same
+`turtleneck_buffer.py` file/branch, regardless of which sensor hardware
+that tool has.
 
 ---
 
