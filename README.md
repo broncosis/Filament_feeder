@@ -22,7 +22,7 @@ Two options are available:
 
 ### Option 1 — Belay (stable)
 
-Uses [Annex Engineering's Belay](https://github.com/Annex-Engineering/Belay) for single-sensor buffer sync. This is the stable, well-tested path. The installer clones and runs the Belay installer automatically, then copies `feeder.cfg`, `exampleT0.cfg`, and `clean_nozzle.cfg` into your Klipper config directory.
+Uses [Annex Engineering's Belay](https://github.com/Annex-Engineering/Belay) for single-sensor buffer sync. This is the stable, well-tested path. The installer clones and runs the Belay installer automatically, then copies `feeder.cfg`, `feeder_macros.cfg`, `toolmap.cfg`, `exampleT0.cfg`, and `clean_nozzle.cfg` into your Klipper config directory.
 
 ### Option 2 — TurtleNeck Buffer (experimental)
 
@@ -129,7 +129,9 @@ gcode:
 | File | Description |
 |------|-------------|
 | `install.sh` | Installer — choose Belay (stable) or TurtleNeck Buffer (experimental) |
-| `feeder.cfg` | Main config — feeder MCU, Belay tensioners, feeder steppers, unload buttons, and all macros |
+| `feeder.cfg` | Hardware & settings — feeder MCU, Belay tensioners, feeder steppers, unload buttons, and the `_FEEDER_VARS` block (bucket position, temps, purge amounts). This is the file you edit for your setup. |
+| `feeder_macros.cfg` | Macro logic only — `LOAD_ANY_TOOL`, `LOAD_ANY_TOOL_DIST`, `UNLOAD_ANY_TOOL`, `RESET_ALL_TOOL_TEMPS`, and their helpers. No hardware or per-printer values live here, so it's safe to replace with a newer copy without losing your settings. |
+| `toolmap.cfg` | Tool remapping / spool failover — `_TOOL_ROUTER`, `SET_TOOLMAP`, `SET_TOOL_FILAMENT_STATUS`, `SHOW_TOOLMAP`. Also pure macro logic, no per-printer values. |
 | `exampleT0.cfg` | Sample tool config — EBB CAN toolhead board, extruder, hotend fan, part fan, ADXL345, toolchanger tool definition, and all three filament sensors |
 | `clean_nozzle.cfg` | Nozzle wipe macro |
 | `turtleneck_buffer/` | TurtleNeck Buffer Klipper extra, install script, and example configs *(experimental)* |
@@ -143,15 +145,24 @@ gcode:
 
 ## Configuration
 
-Run `bash install.sh` to copy config files, or copy them manually. Add `[include feeder.cfg]` to your `printer.cfg`.
+Run `bash install.sh` to copy config files, or copy them manually. Add this to your `printer.cfg`:
 
-You'll need to update:
+```ini
+[include feeder.cfg]
+```
+
+`feeder.cfg` itself `[include]`s `feeder_macros.cfg` and `toolmap.cfg`, so that's the only line printer.cfg needs — all three files must still be present in your config directory (the installer copies all of them).
+
+`feeder.cfg` holds everything specific to your setup — MCU, pins, steppers, and a single `[gcode_macro _FEEDER_VARS]` block with the settings shared by all three load/unload macros (purge bucket position, temps, purge amounts, tip-forming tuning). `feeder_macros.cfg` and `toolmap.cfg` are pure macro logic with no settings of your own in them — they read everything from `_FEEDER_VARS` / their own runtime state, so either can be replaced by a newer copy without wiping out anything you've tuned.
+
+In `feeder.cfg` you'll need to update:
 - **MCU serial path** — match your feeder board's USB ID
 - **Sensor and button pins** — match your feeder board's pinout
 - **`extruder_stepper` extruder names** — match your tool definitions (e.g. `extruder`, `extruder1`, etc.)
 - **`rotation_distance`** — tuned for BMG 50:17 gear ratio; re-calibrate if using a different extruder
-- **Purge bucket coordinates** (`bucket_x`, `bucket_y`) — set these to your bucket position
+- **`[gcode_macro _FEEDER_VARS]`** — purge bucket coordinates (`bucket_x`, `bucket_y`), load temp, purge amounts, wiggle/tip-forming tuning — set once here and used by `LOAD_ANY_TOOL`, `LOAD_ANY_TOOL_DIST`, and `UNLOAD_ANY_TOOL`
 - **Bowden tube length** (`D` parameter, default `1400`) — measure your actual tube length
+- **`spoolman_enabled`** in `_FEEDER_VARS` (default `True`) — set `False` if you don't run Moonraker/Spoolman; `_TOOL_ROUTER` skips `SET_ACTIVE_SPOOL` when disabled instead of erroring with no Spoolman component loaded
 
 ### Belay tensioner setup
 
@@ -168,11 +179,15 @@ Each tool uses up to three sensors, all defined in the tool's config file (e.g. 
 switch_pin: ^feeder:PH0
 pause_on_runout: FALSE
 runout_gcode:
+    SET_TOOL_FILAMENT_STATUS T=0 HAS_FILAMENT=0
     M118 Runout sensor T0 reports: Runout
 insert_gcode:
+    SET_TOOL_FILAMENT_STATUS T=0 HAS_FILAMENT=1
     M118 Runout sensor T0 reports: Filament Detected
     LOAD_ANY_TOOL T=0 S=30 D=1660
 ```
+
+`SET_TOOL_FILAMENT_STATUS` feeds this sensor's state into `toolmap.cfg`, so [tool remapping / failover](#tool-remapping--failover) knows this tool is unavailable and can route around it.
 
 **2. Toolhead arrival sensor** (`filament_sensor_at_T{N}`) — mounted on the toolhead board. This is what `LOAD_ANY_TOOL` checks during the feed loop to know when filament has arrived. The name must follow the `filament_sensor_at_T{N}` pattern exactly:
 
@@ -239,6 +254,72 @@ UNLOAD_ANY_TOOL T=0 S=30 D=1400
 
 Unload buttons on the feeder box also call this automatically.
 
+### `RESET_ALL_TOOL_TEMPS`
+
+Sets every tool's hotend target to 0. `LOAD_ANY_TOOL`/`UNLOAD_ANY_TOOL` only reset the heater target of the tool they just ran on, so a tool loaded/unloaded earlier in a print (or a print cancelled mid-load) can leave another tool's target set — the toolchanger then heats that tool before pickup on the next tool change, even though nothing is printing.
+
+Call this from your own `PRINT_END` and `CANCEL_PRINT` macros (not part of this repo) to clear that state at the end of every print:
+
+```
+RESET_ALL_TOOL_TEMPS
+```
+
+---
+
+## Tool Remapping / Failover
+
+`toolmap.cfg` lets any `T<n>` command be redirected to a different physical tool at runtime — useful for spool failover (auto-switch to a backup tool when one runs out of filament) or general tool swapping.
+
+### Wiring it into your tool macros
+
+Each tool's `gcode_macro T<n>` (see `exampleT0.cfg`) must call `_TOOL_ROUTER TR=<n>` instead of `SELECT_TOOL T=<n>` directly, so requests go through the mapping/failover logic:
+
+```ini
+[gcode_macro T0]
+variable_active: 0
+variable_color: ""
+variable_spool_id: None
+gcode:
+    _TOOL_ROUTER TR=0
+```
+
+`_TOOL_ROUTER` calls both `SELECT_TOOL` and `SET_ACTIVE_SPOOL` together for whichever tool actually ends up selected (mapped, backup, or literal) — so the correct spool always stays associated with the tool that's actually printing, and there's no per-tool spool logic to copy into every `T1.cfg`–`T4.cfg`. A failover to a backup tool correctly attributes usage to the backup's spool, not the originally-requested tool's. If both the primary and backup are unavailable, `_TOOL_ROUTER` only `PAUSE`s — it never calls `SELECT_TOOL` or `SET_ACTIVE_SPOOL`, so a failed tool change never reports a spool as active. This requires every tool to have a matching `[gcode_macro T<n>]` with a `variable_spool_id`, same as the `exampleT0.cfg` pattern.
+
+If you don't run Moonraker/Spoolman, set `spoolman_enabled: False` in `_FEEDER_VARS` (`feeder.cfg`) — `_TOOL_ROUTER` will still call `SELECT_TOOL` but skip `SET_ACTIVE_SPOOL`, which would otherwise error with no Spoolman component loaded.
+
+Feeder-side filament sensors call `SET_TOOL_FILAMENT_STATUS` on runout/insert (see [Toolhead filament sensors](#toolhead-filament-sensors) above) to keep `toolmap.cfg` aware of which tools currently have filament.
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `SET_TOOLMAP T=0 EFF=1` | Requests for T0 will select tool 1 instead |
+| `SET_TOOLMAP T=0 EFF=1 BACKUP=2` | T0 selects tool 1; if tool 1 is unavailable/out of filament, falls back to tool 2 |
+| `SET_TOOLMAP T=0 EFF=0` | Reset T0 back to identity mapping |
+| `SET_TOOL_FILAMENT_STATUS T=0 HAS_FILAMENT=0` | Mark tool 0 as out of filament (normally called by the feeder-side sensor) |
+| `RESET_TOOLMAP` | Reset every tool's mapping and backup to identity (does not touch filament status) |
+| `SHOW_TOOLMAP` | Print current mapping, backups, and filament status for every tool |
+
+By default all tools map to themselves (identity) with no backups, and are assumed to have filament until a sensor says otherwise.
+
+### `_TOOL_ROUTER` behavior
+
+1. If `TL` (tool literal) is set, bypasses all mapping and selects that tool directly — used for testing/manual override.
+2. Otherwise resolves `TR` (tool request) through the current map. If the mapped tool is valid and has filament, selects it.
+3. If the mapped tool is invalid or out of filament and a backup is configured, tries the backup.
+4. If nothing usable is found, sets an `M117` error message, responds with details, and calls `PAUSE`.
+
+### Resetting state between prints
+
+`_TOOLMAP`'s mapping/backups only reset on a Klipper restart — a failover that happens mid-print (via `SET_TOOLMAP` or `_TOOL_ROUTER`'s automatic backup fallback) otherwise stays in effect for every print after it. Call `RESET_TOOLMAP` from your `PRINT_END` and `CANCEL_PRINT` macros (not part of this repo), alongside [`RESET_ALL_TOOL_TEMPS`](#reset_all_tool_temps), so each print starts clean:
+
+```
+RESET_TOOLMAP
+RESET_ALL_TOOL_TEMPS
+```
+
+`filament_status` is left untouched by `RESET_TOOLMAP` since it reflects real sensor state, not print-scoped state.
+
 ---
 
 ## TurtleNeck Buffer
@@ -302,7 +383,7 @@ If `TURTLENECK_JAM` is not defined, the module logs a warning and continues.
 
 ### feeder.cfg with TurtleNeck Buffer
 
-The same `feeder.cfg` is used, but you should **remove or comment out the `[belay]` sections** — TurtleNeck Buffer takes over that role. Everything else (steppers, macros, sensors) stays the same.
+The same `feeder.cfg`, `feeder_macros.cfg`, and `toolmap.cfg` are used, but you should **remove or comment out the `[belay]` sections** — TurtleNeck Buffer takes over that role. Everything else (steppers, macros, sensors) stays the same.
 
 ---
 

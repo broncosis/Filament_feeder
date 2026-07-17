@@ -212,9 +212,11 @@ install_belay() {
 
     echo ""
     echo "Copying config files to $CONFIG_DIR :"
-    install_file "feeder.cfg"       "$CONFIG_DIR" get_main_file
-    install_file "exampleT0.cfg"    "$CONFIG_DIR" get_main_file
-    install_file "clean_nozzle.cfg" "$CONFIG_DIR" get_main_file
+    install_file "feeder.cfg"        "$CONFIG_DIR" get_main_file
+    install_file "feeder_macros.cfg" "$CONFIG_DIR" get_main_file
+    install_file "toolmap.cfg"       "$CONFIG_DIR" get_main_file
+    install_file "exampleT0.cfg"     "$CONFIG_DIR" get_main_file
+    install_file "clean_nozzle.cfg"  "$CONFIG_DIR" get_main_file
 
     # -- Offer Klipper restart --
 
@@ -237,6 +239,7 @@ install_belay() {
     echo "  1. Add to your printer.cfg:"
     echo "       [include feeder.cfg]"
     echo "       [include clean_nozzle.cfg]"
+    echo "       # feeder.cfg includes feeder_macros.cfg and toolmap.cfg itself, no extra lines needed"
     echo "       # Copy exampleT0.cfg for each tool, rename, and [include] each one"
     echo ""
     echo "  2. Update feeder.cfg:"
@@ -244,8 +247,15 @@ install_belay() {
     echo "       - Sensor and button pins"
     echo "       - extruder_stepper extruder names (extruder, extruder1, ...)"
     echo "       - rotation_distance (re-calibrate if not using BMG)"
-    echo "       - bucket_x / bucket_y (your purge bucket position)"
+    echo "       - [gcode_macro _FEEDER_VARS]: bucket_x / bucket_y, temps, purge amounts"
     echo "       - Bowden tube length (D parameter, default 1400)"
+    echo ""
+    echo "     feeder_macros.cfg has no settings to edit — it's pure macro logic"
+    echo "     and reads everything from _FEEDER_VARS in feeder.cfg."
+    echo ""
+    echo "     toolmap.cfg adds tool remapping/failover — each tool's T<n> macro"
+    echo "     (see exampleT0.cfg) must call _TOOL_ROUTER TR=<n> instead of"
+    echo "     SELECT_TOOL T=<n> for this to take effect. See README for details."
     echo ""
     echo "  3. Restart Klipper"
 }
@@ -300,8 +310,10 @@ install_turtleneck() {
 
     echo ""
     echo "Copying config files to $CONFIG_DIR :"
-    install_file "feeder.cfg"       "$CONFIG_DIR" get_main_file
-    install_file "clean_nozzle.cfg" "$CONFIG_DIR" get_main_file
+    install_file "feeder.cfg"        "$CONFIG_DIR" get_main_file
+    install_file "feeder_macros.cfg" "$CONFIG_DIR" get_main_file
+    install_file "toolmap.cfg"       "$CONFIG_DIR" get_main_file
+    install_file "clean_nozzle.cfg"  "$CONFIG_DIR" get_main_file
 
     # -- Offer example config --
 
@@ -339,6 +351,7 @@ install_turtleneck() {
     echo "  1. Add to your printer.cfg:"
     echo "       [include feeder.cfg]"
     echo "       [include clean_nozzle.cfg]"
+    echo "       # feeder.cfg includes feeder_macros.cfg and toolmap.cfg itself, no extra lines needed"
     echo "       # Add [turtleneck_buffer T0], [turtleneck_buffer T1], etc."
     echo "       # See the example config for full reference"
     echo ""
@@ -346,7 +359,7 @@ install_turtleneck() {
     echo "       - MCU serial path"
     echo "       - extruder_stepper extruder names (extruder, extruder1, ...)"
     echo "       - rotation_distance (re-calibrate if not using BMG)"
-    echo "       - bucket_x / bucket_y (your purge bucket position)"
+    echo "       - [gcode_macro _FEEDER_VARS]: bucket_x / bucket_y, temps, purge amounts"
     echo "       - Bowden tube length (D parameter, default 1400)"
     echo "       - Remove or comment out the [belay] sections (replaced by turtleneck_buffer)"
     echo ""
